@@ -428,4 +428,88 @@ Poisoned KG: 15 triples (+2 vs. clean)
   \end{center}
 \end{frame}
 
+\appendix
+
+% ============================================================
+\section{Apéndice: material de respaldo}
+% ============================================================
+
+\begin{frame}[fragile]{Apéndice --- Mapa de módulos: \texttt{src/kgrag\_attack/}}
+  \footnotesize
+  \centering
+  \begin{tabular}{@{}l p{7.4cm}@{}}
+    \toprule
+    \textbf{Archivo} & \textbf{Qué hace} \\
+    \midrule
+    \texttt{kg.py} &
+      Estructura \texttt{KnowledgeGraph}: alta de tripletas, vecindario de
+      relaciones (\texttt{neighborhood\_relations}), anclaje de caminos
+      (\texttt{ground}), fusión grafo limpio + perturbación
+      (\texttt{with\_triples}). \\
+    \texttt{llm.py} &
+      Protocolo \texttt{LLMClient} con dos implementaciones:
+      \texttt{OpenAIClient} (API real, \texttt{gpt-4o-mini}) y
+      \texttt{StaticLLMClient} (respuestas fijas, para pruebas y modo
+      \texttt{--offline}). \\
+    \texttt{adversarial\_answers.py} &
+      \textbf{Etapa 1.} Pide al LLM respuestas incorrectas plausibles y las
+      valida por coincidencia difusa contra las entidades reales del grafo. \\
+    \texttt{relation\_paths.py} &
+      \textbf{Etapa 2.} Pide al LLM caminos de relaciones restringidos al
+      vocabulario real cercano a la entidad tema; descarta los que inventan
+      relaciones. \\
+    \texttt{perturbation.py} &
+      \textbf{Etapa 3.} Construye e inserta las tripletas de perturbación
+      (estrategia principal de anclaje + respaldo con entidades puente),
+      respetando el presupuesto $K$. \\
+    \texttt{attack.py} &
+      Orquestador: \texttt{run\_attack} encadena las tres etapas anteriores y
+      arma el \texttt{AttackResult} con grafo limpio, grafo envenenado y todo
+      lo generado. \\
+    \texttt{\_\_init\_\_.py} &
+      Punto de entrada del paquete: expone \texttt{KnowledgeGraph},
+      \texttt{AttackResult} y \texttt{run\_attack} para importarlos
+      directamente desde \texttt{kgrag\_attack}. \\
+    \bottomrule
+  \end{tabular}
+\end{frame}
+
+\begin{frame}[fragile]{Apéndice --- Secuencia de ejecución de \texttt{demo\_manchester.py}}
+  \footnotesize
+  \begin{enumerate}
+    \item \texttt{demo\_manchester.py} agrega \texttt{src/} al
+      \texttt{sys.path} e importa \texttt{run\_attack},
+      \texttt{KnowledgeGraph} y los clientes LLM.
+    \item Construye el grafo limpio con
+      \texttt{KnowledgeGraph.from\_triples(CLEAN\_TRIPLES)}: 13 tripletas
+      sobre \emph{Manchester By The Sea} \hspace{1pt}(\texttt{kg.py}).
+    \item Instancia el LLM: \texttt{StaticLLMClient} con 2 respuestas fijas
+      en modo \texttt{--offline}, o \texttt{OpenAIClient}
+      (\texttt{gpt-4o-mini}) sin el flag \hspace{1pt}(\texttt{llm.py}).
+    \item Llama a \texttt{run\_attack(kg, question, topic\_entity, llm,\dots)}
+      \hspace{1pt}(\texttt{attack.py}), que ejecuta en orden:
+      \begin{enumerate}
+        \item \texttt{generate\_adversarial\_answers}
+          \hspace{1pt}(\texttt{adversarial\_answers.py})
+        \item \texttt{generate\_relation\_paths}
+          \hspace{1pt}(\texttt{relation\_paths.py})
+        \item \texttt{poison\_knowledge\_graph}
+          \hspace{1pt}(\texttt{perturbation.py})
+      \end{enumerate}
+    \item Recibe el \texttt{AttackResult}: grafo limpio, grafo envenenado,
+      respuestas adversarias, caminos de relaciones y tripletas insertadas.
+    \item \texttt{demo\_manchester.py} imprime el resumen y compara
+      \texttt{out\_edges} del grafo antes y después del ataque.
+  \end{enumerate}
+  \vspace{0.5em}
+  \begin{alertblock}{Para el expositor}
+    Si preguntan "¿dónde vive cada pieza?": las 3 etapas del método están en
+    \texttt{adversarial\_answers.py}, \texttt{relation\_paths.py} y
+    \texttt{perturbation.py}; \texttt{kg.py} y \texttt{llm.py} son las
+    utilidades compartidas que todas ellas usan; \texttt{attack.py} las
+    encadena; \texttt{demo\_manchester.py} es el único punto de entrada
+    ejecutable desde la terminal.
+  \end{alertblock}
+\end{frame}
+
 \end{document}
