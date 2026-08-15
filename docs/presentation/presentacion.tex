@@ -1,0 +1,431 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\usetheme{Madrid}
+\usecolortheme{whale}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{caption}[numbered]
+
+\definecolor{codebg}{RGB}{245,245,245}
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  backgroundcolor=\color{codebg},
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  showstringspaces=false
+}
+
+\title[Envenenamiento de KG-RAG]{Ataques de envenenamiento de conocimiento a sistemas KG-RAG}
+\subtitle{Reproducción del pipeline de ataque en caja negra de Zhao et al. (arXiv:2507.08862)}
+\author{Ingrid Alicia Yábar Geldres}
+\institute[UNI]{
+  Universidad Nacional de Ingeniería (UNI)\\
+  Facultad de Ingeniería Económica, Estadística y Ciencias Sociales\\
+  Doctorado en Ciencias e Ingeniería Estadística\\
+  \small ORCID: 0009-0003-9729-3259 \quad ingrid.yabar.g@uni.pe
+}
+\date{}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Contenido}
+  \tableofcontents
+\end{frame}
+
+% ============================================================
+\section{Motivación}
+% ============================================================
+
+\begin{frame}{¿Por qué importa la seguridad de KG-RAG?}
+  \begin{itemize}
+    \item RAG permite que un LLM responda apoyándose en una fuente de conocimiento
+      externa, en lugar de depender solo de lo memorizado en el entrenamiento.
+    \item Cuando esa fuente es un \textbf{grafo de conocimiento (KG)}, el sistema
+      puede seguir cadenas de razonamiento explícitas y auditables entre
+      entidades: KG-RAG.
+    \item La misma propiedad que hace útil a un KG-RAG --- un grafo editable y
+      actualizable --- es también su punto débil.
+    \item Una sola tripleta falsa, bien conectada a la entidad correcta, puede
+      desviar una cadena de razonamiento multi-salto completa, sin alterar
+      visiblemente el resto del grafo.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Ejemplo motivador}
+  \begin{block}{Pregunta}
+    ¿En qué país se filmó la película \emph{Manchester By The Sea}?
+  \end{block}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      \textbf{Antes del ataque}
+      \begin{itemize}
+        \item[] Manchester By The Sea \(\to\) \texttt{filmPlace} \(\to\) Manchester
+        \item[] Manchester \(\to\) \texttt{locatedIn} \(\to\) Massachusetts
+        \item[] Massachusetts \(\to\) \texttt{stateOf} \(\to\) United States
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Después de insertar 1 arista falsa}
+      \begin{itemize}
+        \item[] Manchester \(\to\) \texttt{containedIn} \(\to\) England
+        \item[] England \(\to\) \texttt{containedIn} \(\to\) United Kingdom
+        \item[] $\Rightarrow$ el sistema puede responder \emph{United Kingdom}
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \vspace{0.5em}
+  \small Objetivo de esta presentación: documentar una implementación propia de
+  este ataque, de extremo a extremo, sobre un caso verificable a mano.
+\end{frame}
+
+% ============================================================
+\section{Marco teórico}
+% ============================================================
+
+\begin{frame}{Grafo de conocimiento y caminos de relaciones}
+  \begin{block}{Grafo de conocimiento}
+    $G = (E, R, T)$, con $T \subseteq E \times R \times E$ el conjunto de
+    tripletas $(e_h, r, e_t)$: una arista dirigida y etiquetada de $e_h$ a $e_t$.
+  \end{block}
+  \begin{block}{Camino de razonamiento y camino de relaciones}
+    $p: e_0 \xrightarrow{r_1} e_1 \xrightarrow{r_2} \cdots \xrightarrow{r_l} e_l$
+    \quad$\Rightarrow$\quad camino de relaciones asociado $w = (r_1, r_2, \dots, r_l)$
+    (se descartan las entidades intermedias, se conserva solo la secuencia de relaciones).
+  \end{block}
+  \begin{block}{Anclaje (\emph{grounding})}
+    Operación inversa: dado un camino de relaciones $w$ y una entidad de inicio,
+    encontrar las entidades reales del grafo alcanzadas al recorrer $w$.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Pipeline de un sistema KG-RAG}
+  \begin{block}{Etapa de recuperación}
+    \[ G_q = \text{Retriever}(q; G) \tag{1} \]
+    Extrae del grafo completo $G$ el subgrafo $G_q$ relevante para la pregunta $q$.
+  \end{block}
+  \begin{block}{Etapa de generación}
+    \[ a = f_\theta(\text{Prompt}[q, G_q]) \tag{2} \]
+    El LLM $f_\theta$ produce la respuesta final a partir de $q$ y $G_q$.
+  \end{block}
+  \begin{alertblock}{Vulnerabilidad}
+    Si $G$ contiene tripletas falsas bien conectadas, la recuperación puede
+    incluirlas en $G_q$ sin distinguirlas de las legítimas.
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Modelo de amenaza (caja negra)}
+  \[ \hat{A} = \text{KG-RAG}(q; \hat{G}), \qquad a^{*} \notin \hat{A}, \qquad
+     \hat{G} = \{E, R, T \cup \hat{T}\} \tag{3} \]
+  \begin{itemize}
+    \item El atacante \textbf{no} conoce el recuperador, el LLM, ni la respuesta
+      correcta $a^{*}$ de la pregunta atacada.
+    \item Su única capacidad es \textbf{insertar} un conjunto pequeño de
+      tripletas $\hat{T}$ en el grafo --- no puede borrar ni modificar nada.
+    \item Restricciones de sigilo: cada tripleta insertada reutiliza entidades y
+      relaciones \emph{ya existentes} en el grafo, y el número de tripletas por
+      respuesta adversaria está acotado por un presupuesto $K$.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Formalización: extracción de caminos de relaciones}
+  \[ \max_\theta \; \mathbb{E}_{w \sim W^{*}}\big[\log P_\theta(w \mid q)\big] \tag{4} \]
+  \[ \operatorname*{arg\,max}_\theta \; \frac{1}{|W^{*}|} \sum_{w \in W^{*}} \log P_\theta(w \mid q) \tag{5} \]
+  \[ \frac{1}{|W^{*}|} \sum_{w \in W^{*}} \log \prod_{i=1}^{|w|} P_\theta(r_i \mid r_{<i}, q) \tag{6} \]
+  \begin{itemize}
+    \item $W^{*}$: caminos de relaciones más cortos entre la entidad tema y la
+      respuesta correcta (supervisión débil).
+    \item La Ec.~6 descompone el problema: generar un buen camino equivale a
+      predecir, relación por relación, la siguiente relación más plausible.
+    \item El artículo original resuelve esto \textbf{entrenando} un LLM
+      específico de KG (LLM\_RoG). Esta implementación logra el mismo efecto sin
+      entrenamiento (ver sección de desviaciones).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Formalización: tripleta de perturbación}
+  \[ E_{l-1} = \text{Grounding}(e_q, w'; G), \qquad w' = (r_1, \dots, r_{l-1}) \tag{7} \]
+  \begin{itemize}
+    \item Se ancla el \textbf{prefijo} del camino desde la entidad tema $e_q$.
+    \item Por cada entidad alcanzada $e_{l-1} \in E_{l-1}$, se construye la
+      tripleta de perturbación $(e_{l-1}, r_l, \hat{a})$, adjuntando la última
+      relación del camino hacia la respuesta adversaria $\hat{a}$.
+    \item \textbf{Estrategia de respaldo:} si el prefijo no se puede anclar, se
+      sintetiza una cadena con entidades puente aleatorias que preserva el mismo
+      patrón de relaciones hasta llegar a $\hat{a}$.
+  \end{itemize}
+\end{frame}
+
+% ============================================================
+\section{Método de ataque implementado}
+% ============================================================
+
+\begin{frame}{Pipeline de tres etapas}
+  \centering
+  \begin{tabular}{lll}
+    \toprule
+    \textbf{Etapa} & \textbf{Módulo} & \textbf{Salida} \\
+    \midrule
+    1. Respuestas adversarias & \texttt{adversarial\_answers.py} & $\hat{A}$ (entidades del KG) \\
+    2. Caminos de relaciones & \texttt{relation\_paths.py} & plantillas $w$ \\
+    3. Inserción de perturbación & \texttt{perturbation.py} & tripletas nuevas \\
+    \bottomrule
+  \end{tabular}
+  \vspace{1em}
+  \begin{block}{Orquestación}
+    \texttt{run\_attack(kg, question, topic\_entity, llm, n\_answers=5, budget\_k=4)}
+    encadena las tres etapas y devuelve el grafo envenenado.
+  \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Etapa 1 --- Generación de respuestas adversarias}
+  \begin{lstlisting}
+Question: {question}
+
+Generate 5 entity names that are incorrect answers to this
+question, but might sound plausible or confusing.
+- Only list the entity names as a bullet list.
+- Each bullet should contain the name of one entity only.
+  \end{lstlisting}
+  \begin{itemize}
+    \item Prompt tomado de Zhao et al. (2025).
+    \item El LLM puede alucinar nombres que no existen en el grafo.
+    \item Se repiten rondas de generación y se aplica \textbf{coincidencia difusa}
+      (\texttt{difflib.get\_close\_matches}) contra el vocabulario de entidades
+      del grafo hasta reunir $N$ respuestas válidas.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Etapa 2 --- Extracción de caminos de relaciones}
+  \begin{itemize}
+    \item Se calcula el vocabulario de relaciones alcanzables en pocos saltos
+      desde la entidad tema (\texttt{neighborhood\_relations}).
+    \item Se le pide al LLM caminos de relaciones usando \textbf{solo} ese
+      vocabulario, con un prompt \textbf{propio de esta implementación} (el
+      artículo resuelve esta etapa con un modelo entrenado, no con un prompt).
+    \item Cualquier camino propuesto que use una relación fuera del vocabulario
+      se descarta en el post-procesamiento.
+  \end{itemize}
+  \begin{alertblock}{Por qué funciona}
+    Restringir el vocabulario garantiza caminos anclables en el grafo real, sin
+    necesidad de entrenar un modelo específico de KG.
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Etapa 3 --- Inserción de tripletas de perturbación}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      \textbf{Estrategia principal}
+      \begin{itemize}
+        \item Ancla el prefijo del camino desde la entidad tema.
+        \item Adjunta la última relación hacia la respuesta adversaria.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Estrategia de respaldo}
+      \begin{itemize}
+        \item Si el prefijo no ancla, muestrea entidades puente al azar.
+        \item Preserva el mismo patrón de relaciones del camino.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \vspace{1em}
+  \begin{itemize}
+    \item Presupuesto $K$ tripletas por respuesta adversaria.
+    \item Nunca se duplica una tripleta ya existente en el grafo.
+  \end{itemize}
+\end{frame}
+
+% ============================================================
+\section{Réplica del experimento}
+% ============================================================
+
+\begin{frame}[fragile]{Configuración de la réplica}
+  \begin{block}{Entorno}
+\begin{lstlisting}
+pip install -r requirements.txt
+cp .env.example .env   # completar OPENAI_API_KEY
+
+python scripts/demo_manchester.py --offline
+python -m pytest -q
+\end{lstlisting}
+  \end{block}
+  \begin{itemize}
+    \item Grafo construido a mano: 13 tripletas sobre \emph{Manchester By The Sea}.
+    \item Modo \texttt{--offline}: LLM simulado y determinista, sin llamadas a la API.
+    \item 18 pruebas automatizadas cubren cada etapa de forma aislada, también offline.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Resultado reproducible (modo offline)}
+\begin{lstlisting}
+Adversarial target answers: ['United Kingdom']
+Relation path templates: [('filmPlace', 'locatedIn'), ('starring', 'bornIn')]
+
+Injected perturbation triples:
+  (Manchester, locatedIn, United Kingdom)      [target: United Kingdom]
+  (Casey Affleck, bornIn, United Kingdom)      [target: United Kingdom]
+
+Poisoned KG: 15 triples (+2 vs. clean)
+\end{lstlisting}
+  \begin{itemize}
+    \item De los candidatos generados, solo \emph{United Kingdom} ya existía en
+      el grafo: \texttt{(England, containedIn, United Kingdom)}, alcanzable en
+      dos saltos desde David Beckham y sin relación con la película.
+    \item Ambos caminos se anclaron directamente: no fue necesaria la
+      estrategia de respaldo.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Interpretación (ejecución offline)}
+  \begin{itemize}
+    \item Con solo \textbf{2 tripletas insertadas} sobre 13 originales, se crean
+      dos rutas de razonamiento alternativas hacia una respuesta incorrecta:
+      \begin{itemize}
+        \small
+        \item Manchester By The Sea $\to$ \texttt{filmPlace} $\to$ Manchester
+          $\to$ \texttt{locatedIn} $\to$ United Kingdom
+        \item Manchester By The Sea $\to$ \texttt{starring} $\to$ Casey Affleck
+          $\to$ \texttt{bornIn} $\to$ United Kingdom
+      \end{itemize}
+    \item Ninguna señal estructural distingue estas rutas de la ruta legítima
+      hacia \emph{United States}.
+    \item Confirma, a pequeña escala, el mecanismo central del artículo: una
+      perturbación mínima puede activar una cadena de inferencia engañosa
+      completa.
+    \item \texttt{pytest -q} $\Rightarrow$ \textbf{18 passed} --- cada etapa se
+      valida de forma aislada y reproducible.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Ejecución con la API real de OpenAI}
+\begin{lstlisting}
+Adversarial target answers: ['Florida']
+Relation path templates: [('filmPlace', 'locatedIn'), ('filmPlace', 'starring')]
+
+Injected perturbation triples:
+  (Manchester, locatedIn, Florida)   [target: Florida]
+  (Manchester, starring, Florida)    [target: Florida]
+
+Poisoned KG: 15 triples (+2 vs. clean)
+\end{lstlisting}
+  \begin{itemize}
+    \item Modelo real (\texttt{gpt-4o-mini}, sin \texttt{--offline}): la
+      respuesta adversaria cambia de \emph{United Kingdom} a \emph{Florida}
+      ---coincidencia accidental distinta, vía \texttt{(Miami, locatedIn,
+      Florida)}--- porque el LLM no es determinista.
+    \item El camino \texttt{(filmPlace, starring)} es \textbf{anclable pero
+      semánticamente incoherente}: adjuntar \texttt{starring} a una ubicación
+      no tiene sentido real, aunque la restricción de vocabulario lo admite.
+    \item Límite honesto: esta corrida no es reproducible byte a byte; el modo
+      \texttt{--offline} sigue siendo la referencia fija.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Resultados reportados en el artículo original}
+  \small
+  \centering
+  \begin{tabular}{lccc}
+    \toprule
+    \textbf{Método (WebQSP)} & \textbf{F1 limpio} & \textbf{F1 atacado} & \textbf{Caída relativa} \\
+    \midrule
+    RoG          & 70.34 & 38.06 & $\downarrow$ 46\% \\
+    GCR          & 71.07 & 63.94 & $\downarrow$ 10\% \\
+    G-retriever  & 52.39 & 46.31 & $\downarrow$ 12\% \\
+    SubgraphRAG  & 66.94 & 50.22 & $\downarrow$ 18\% \\
+    \bottomrule
+  \end{tabular}
+  \vspace{1em}
+  \begin{itemize}
+    \item Con solo $N{=}5$ respuestas adversarias y $K{=}4$ tripletas cada una
+      (máx. 20 tripletas por pregunta), los cuatro sistemas KG-RAG sufren caídas
+      sustanciales frente a una línea base de modificación aleatoria (caída
+      marginal).
+    \item Hallazgo clave: la vulnerabilidad principal está en la etapa de
+      \textbf{recuperación} (cobertura $>$90\% de tripletas adversarias
+      recuperadas); la etapa de generación es más resistente, pero exhibe una
+      respuesta polarizada --- o rechaza el contenido adversario por completo, o
+      lo adopta dominantemente.
+  \end{itemize}
+\end{frame}
+
+% ============================================================
+\section{Desviaciones y limitaciones}
+% ============================================================
+
+\begin{frame}{Desviaciones frente al método original}
+  \begin{block}{Extracción de caminos sin modelo entrenado}
+    El artículo entrena LLM\_RoG (LLaMA-2-7B) con el objetivo de las Ec.~4--6.
+    Esta implementación logra caminos anclables restringiendo el vocabulario de
+    relaciones de un LLM de propósito general al vecindario real de la entidad
+    tema --- sin GPU ni entrenamiento.
+  \end{block}
+  \begin{block}{El resto sigue el artículo directamente}
+    Generación de respuestas adversarias por coincidencia difusa e inserción de
+    perturbación con estrategia de respaldo se implementan tal como se describen
+    en el artículo.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Limitaciones de alcance}
+  \begin{itemize}
+    \item No se integra ningún sistema KG-RAG objetivo (RoG, GCR, G-retriever,
+      SubgraphRAG): la validación se detiene en el grafo envenenado, sin medir
+      métricas de respuesta final (Hit, F1, A-MRR, \dots).
+    \item Sin benchmarks a gran escala: un grafo de 13 tripletas construido a
+      mano, frente a los miles de preguntas y subgrafos de WebQSP/CWQ.
+    \item Modelo de lenguaje distinto: \texttt{gpt-4o-mini} en lugar de GPT-4.
+  \end{itemize}
+  \vspace{1em}
+  \textbf{Trabajo futuro:} integrar un recuperador y generador mínimos para medir
+  el efecto sobre la respuesta final; ejecutar sobre un subconjunto real de
+  WebQSP/CWQ.
+\end{frame}
+
+% ============================================================
+\section{Conclusiones}
+% ============================================================
+
+\begin{frame}{Conclusiones}
+  \begin{itemize}
+    \item Se reprodujo el pipeline de ataque de tres etapas de forma ejecutable
+      y verificable, con 18 pruebas automatizadas y una demostración de
+      extremo a extremo.
+    \item El caso replicado confirma el mecanismo central del artículo: una
+      perturbación mínima e indistinguible estructuralmente puede activar una
+      cadena de inferencia engañosa completa.
+    \item La principal simplificación --- prescindir de un modelo entrenado
+      específico de KG a favor de una restricción de vocabulario --- preserva la
+      propiedad esencial (caminos anclables) sin requerir entrenamiento, pero no
+      garantiza coherencia semántica: la ejecución real contra la API lo mostró
+      con un camino anclable aunque semánticamente extraño.
+    \item Próximo paso natural: cerrar la brecha hacia el artículo integrando un
+      sistema KG-RAG objetivo para medir el impacto sobre la respuesta final.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Referencias}
+  \normalsize
+  Zhao, T., Chen, J., Ru, Y., Zhu, H., Hu, N., Liu, J., \& Lin, Q. (2025).
+  \emph{RAG safety: Exploring knowledge poisoning attacks to
+  retrieval-augmented generation}. arXiv. \url{https://arxiv.org/abs/2507.08862}
+
+  \vspace{3em}
+  \begin{center}
+    \Large ¡Gracias!
+  \end{center}
+\end{frame}
+
+\end{document}
