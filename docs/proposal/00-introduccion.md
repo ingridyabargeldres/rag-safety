@@ -32,7 +32,15 @@ correcto del grafo para desviar un camino de razonamiento multi-salto completo
 hacia una conclusión incorrecta, sin que el resto del grafo se vea alterado ni la
 manipulación resulte evidente a simple vista (Zhao et al., 2025).
 
-Este proyecto documenta una implementación propia del ataque de envenenamiento
+Zhao et al. (2025) no publica un repositorio de código junto al artículo: no
+hay enlace a implementación oficial ni en el PDF/HTML del artículo ni en su
+página de arXiv. Por lo tanto, a diferencia de otros artículos de la lista del
+curso que sí permiten clonar y ejecutar directamente el código de sus autores,
+esta reproducción solo puede construirse como una **implementación propia**,
+escrita a partir de la descripción metodológica y las fórmulas del artículo
+(ecuaciones 1 a 7), no a partir de un código fuente existente.
+
+Este proyecto documenta esa implementación propia del ataque de envenenamiento
 de conocimiento contra sistemas KG-RAG propuesto por Zhao et al. (2025): dado un grafo de
 conocimiento limpio y una pregunta, el ataque identifica primero
 qué respuestas incorrectas conviene inducir, luego determina qué patrón de

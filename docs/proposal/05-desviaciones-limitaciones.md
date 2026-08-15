@@ -7,6 +7,17 @@ luego se acotan las [limitaciones de alcance](#limitaciones-de-alcance) que
 quedan fuera de esta implementación; y finalmente se proponen los pasos
 naturales para cerrar esa brecha en el [trabajo futuro](#trabajo-futuro).
 
+## Ausencia de código fuente del artículo
+
+Zhao et al. (2025) no publica un repositorio asociado al artículo: no se
+encontró enlace a código en el PDF, en el HTML de arXiv, ni en la página de
+resumen de arXiv (verificado en agosto de 2026). Esto condiciona el alcance de
+toda esta reproducción: no existe un código original que clonar y ejecutar, a
+diferencia de otros artículos de la lista del curso. Todas las decisiones de
+diseño de este documento —la implementación propia del pipeline, sus
+desviaciones deliberadas y sus limitaciones de alcance— parten de esa
+restricción de origen, no de una elección de conveniencia.
+
 ## Desviaciones deliberadas
 
 Esta implementación se aparta del artículo original en un único punto
