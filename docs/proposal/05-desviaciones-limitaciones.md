@@ -2,18 +2,19 @@
 
 Este documento contrasta la implementación con el método original de Zhao et
 al. (2025) y delimita hasta dónde llega esta reproducción. Primero se detallan
-las desviaciones deliberadas frente al artículo (Desviaciones deliberadas);
-luego se acotan las limitaciones de alcance que quedan fuera de esta
-implementación (Limitaciones de alcance); y finalmente se proponen los pasos
-naturales para cerrar esa brecha (Trabajo futuro).
+las [desviaciones deliberadas](#desviaciones-deliberadas) frente al artículo;
+luego se acotan las [limitaciones de alcance](#limitaciones-de-alcance) que
+quedan fuera de esta implementación; y finalmente se proponen los pasos
+naturales para cerrar esa brecha en el [trabajo futuro](#trabajo-futuro).
 
 ## Desviaciones deliberadas
 
 Esta implementación se aparta del artículo original en un único punto
-deliberado: la extracción de caminos de relaciones, que aquí no requiere
-entrenar ningún modelo (Extracción de caminos de relaciones sin modelo
-especializado). El resto del pipeline sigue el método original sin
-modificaciones de fondo (Todo lo demás sigue el método original directamente).
+deliberado: la
+[extracción de caminos de relaciones sin modelo especializado](#extracción-de-caminos-de-relaciones-sin-modelo-especializado),
+que aquí no requiere entrenar ningún modelo. El resto del pipeline
+[sigue el método original directamente](#todo-lo-demás-sigue-el-método-original-directamente),
+sin modificaciones de fondo.
 
 ### Extracción de caminos de relaciones sin modelo especializado
 

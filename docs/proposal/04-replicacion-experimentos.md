@@ -1,8 +1,17 @@
 # Réplica del experimento
 
 Esta sección documenta la ejecución real del ataque implementado en este
-repositorio, de extremo a extremo, sobre un caso de prueba construido a mano y
-verificable por inspección directa.
+repositorio, de extremo a extremo, tras la
+[preparación del entorno](#preparación-del-entorno), sobre un
+[caso de prueba construido a mano](#caso-de-prueba-manchester-by-the-sea) y
+verificable por inspección directa. Primero se muestra la
+[salida determinista en modo offline](#salida-real-de-la-ejecución---offline)
+y se [interpreta tripleta por tripleta](#interpretación-del-resultado);
+después se contrasta con una
+[ejecución real contra la API de OpenAI](#ejecución-con-la-api-real-de-openai),
+no reproducible byte a byte. Cierra la sección la
+[verificación mediante las pruebas automatizadas](#verificación-con-pruebas-automatizadas)
+del proyecto, que sí son reproducibles en cualquier entorno.
 
 ## Preparación del entorno
 
@@ -84,13 +93,17 @@ After attack:
 
 ## Interpretación del resultado
 
-De la lista de países candidatos, solo "United Kingdom" ya existía como entidad en
-el grafo: aparece como cola de la tripleta `(England, containedIn, United
-Kingdom)`, ajena a la película y alcanzable solo indirectamente desde David
-Beckham (`David Beckham --bornIn--> England --containedIn--> United Kingdom`).
-Es la única candidata que sobrevive la coincidencia difusa contra el vocabulario
-de entidades, así que es la única respuesta adversaria válida para este caso —de
-ahí que la lista final tenga un solo elemento en lugar de cinco.
+De la lista de cinco países candidatos, `demo_manchester.py` pide una sola
+respuesta adversaria (`--n-answers` vale 1 por defecto en el script, a
+diferencia del valor por defecto 5 de `run_attack`), así que la búsqueda se
+detiene en el primer candidato que coincide con una entidad del grafo. Ese
+candidato es "United Kingdom", que además es el único de los cinco que existe
+como entidad en este grafo: aparece como cola de la tripleta `(England,
+containedIn, United Kingdom)`, ajena a la película y alcanzable solo
+indirectamente desde David Beckham (`David Beckham --bornIn--> England
+--containedIn--> United Kingdom`). La lista final tiene un solo elemento en
+lugar de cinco por ambas razones: el límite explícito del script y el hecho de
+que ningún otro candidato habría sobrevivido la coincidencia difusa.
 
 Con esa única respuesta adversaria y los dos caminos de relaciones propuestos, la
 etapa de anclaje resuelve el prefijo de un salto de cada camino
@@ -113,9 +126,10 @@ bornIn → United Kingdom`. Un sistema KG-RAG que recorra el grafo desde la enti
 tema encontraría estas dos rutas hacia "United Kingdom" junto a la ruta legítima
 hacia "United States", sin ninguna señal estructural que distinga la información
 insertada de la original — exactamente el mecanismo descrito en el marco teórico
-para el ejemplo original del artículo (Zhao et al., 2025): insertar
-`(Manchester, containedIn, England)` para engañar al sistema hacia "United
-Kingdom".
+para el ejemplo original del artículo (Zhao et al., 2025, Figura 1): insertar
+`(Manchester, cityOf, England)`, que se combina con la tripleta ya existente
+`(England, containedIn, United Kingdom)` para completar una cadena de dos
+saltos que engaña al sistema hacia "United Kingdom".
 
 ## Ejecución con la API real de OpenAI
 
@@ -171,7 +185,8 @@ la de "United Kingdom" en la ejecución offline, pero sobre una entidad
 distinta.
 
 De los dos caminos de relaciones propuestos, `(filmPlace, locatedIn)` reproduce
-el patrón canónico del artículo (lugar de filmación → ubicado en). El segundo,
+el mismo patrón geográfico de dos saltos (lugar de filmación → ubicado en) que
+usa el propio camino de razonamiento correcto de este caso de prueba. El segundo,
 `(filmPlace, starring)`, es estructuralmente válido —`starring` existe como
 relación saliente dentro del vocabulario de dos saltos alrededor de la entidad
 tema— pero semánticamente incoherente: adjuntar `starring` a "Manchester" (una

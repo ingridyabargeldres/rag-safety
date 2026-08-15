@@ -2,8 +2,11 @@
 
 El ataque se ejecuta por pregunta, orquestado por
 [`run_attack`](../../src/kgrag_attack/attack.py) en las tres etapas secuenciales
-propuestas por Zhao et al. (2025): generación de respuestas adversarias →
-extracción de caminos de relaciones → inserción de tripletas de perturbación.
+propuestas por Zhao et al. (2025): [generación de respuestas
+adversarias](#etapa-1--generación-de-respuestas-adversarias) →
+[extracción de caminos de relaciones](#etapa-2--extracción-de-caminos-de-relaciones)
+→ [inserción de tripletas de
+perturbación](#etapa-3--inserción-de-tripletas-de-perturbación).
 Cada etapa se implementa en su propio módulo y puede probarse de forma aislada.
 
 ```python
@@ -70,9 +73,10 @@ restricción de no introducir entidades nuevas.
 
 **Módulo:** [`src/kgrag_attack/relation_paths.py`](../../src/kgrag_attack/relation_paths.py)
 
-Con las respuestas adversarias decididas, hace falta un patrón de relaciones
-plausible que sirva de plantilla para conectar la entidad tema de la pregunta con
-esas respuestas. Esta etapa calcula primero el vocabulario de relaciones que
+Independientemente de las respuestas adversarias generadas en la etapa anterior
+—esta etapa no recibe ese resultado como entrada—, hace falta un patrón de
+relaciones plausible que sirva de plantilla para conectar la entidad tema de la
+pregunta con una respuesta. Esta etapa calcula primero el vocabulario de relaciones que
 realmente existen a pocos saltos de la entidad tema
 (`KnowledgeGraph.neighborhood_relations`), y luego se lo pasa al modelo de
 lenguaje junto con la pregunta, mediante un prompt propio de esta implementación
@@ -90,6 +94,9 @@ Available relations: {relations}
 Propose up to {n_paths} short relation paths (chains of 1 to {max_hops} relations, using ONLY relations from the list above, spelled exactly as given) that would plausibly lead from the topic entity to the answer of the question.
 
 Output exactly one path per line, relations separated by " -> ". Do not number the lines, do not include the topic entity name, and do not add any other text.
+Example output for two 2-hop paths:
+relationA -> relationB
+relationC -> relationD
 ```
 
 La respuesta del modelo se procesa con `_parse_paths`, que descarta cualquier línea
@@ -106,8 +113,8 @@ Con las respuestas adversarias y los caminos de relaciones ya generados,
 `build_perturbation_triples` construye, para una única respuesta adversaria, hasta
 `budget_k` tripletas nuevas:
 
-**Estrategia principal.** Para cada camino `(r₁, …, r_l)`, se ancla el prefijo
-`(r₁, …, r_{l-1})` desde la entidad tema con `KnowledgeGraph.ground`, y por cada
+**Estrategia principal.** Para cada camino $`(r_1, \ldots, r_l)`$, se ancla el prefijo
+$`(r_1, \ldots, r_{l-1})`$ desde la entidad tema con `KnowledgeGraph.ground`, y por cada
 entidad alcanzada se añade la tripleta `(entidad_alcanzada, r_l, respuesta_adversaria)`.
 
 **Estrategia de respaldo.** Si la estrategia principal no reúne `budget_k`

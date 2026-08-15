@@ -43,10 +43,15 @@ ataque necesita:
   siempre disponible para comparar contra el grafo "envenenado").
 - `neighborhood_relations` — recorrido en anchura que acumula el vocabulario de
   relaciones alcanzables en, como máximo, `max_hops` saltos desde una entidad; usado
-  para restringir qué relaciones puede proponer el modelo en la etapa 2.
+  para restringir qué relaciones puede proponer el modelo en la
+  [extracción de caminos de relaciones](02-metodo-de-ataque.md#etapa-2--extracción-de-caminos-de-relaciones)
+  (etapa 2).
 - `ground` — sigue una secuencia de relaciones desde una entidad de inicio y
-  devuelve el conjunto de entidades alcanzadas; es la operación de anclaje
-  descrita en el marco teórico, usada en la etapa 3.
+  devuelve el conjunto de entidades alcanzadas; es la operación de
+  [anclaje](01-marco-teorico.md#caminos-de-razonamiento-y-caminos-de-relaciones)
+  descrita en el marco teórico, usada en la
+  [inserción de tripletas de perturbación](02-metodo-de-ataque.md#etapa-3--inserción-de-tripletas-de-perturbación)
+  (etapa 3).
 - `random_entity` — muestreo aleatorio de una entidad del grafo (con exclusiones),
   usado por la estrategia de respaldo de la etapa 3.
 
@@ -76,8 +81,10 @@ envenenado— para poder compararlos directamente.
 
 ## Pruebas automatizadas
 
-Las 18 pruebas del proyecto (`tests/`) se ejecutan íntegramente sin acceso a red,
-usando `StaticLLMClient` para fijar las respuestas del modelo:
+Las 18 pruebas del proyecto (`tests/`) se ejecutan íntegramente sin acceso a red;
+las que ejercitan una etapa basada en LLM (`test_adversarial_answers.py`,
+`test_relation_paths.py`) usan `StaticLLMClient` para fijar de antemano las
+respuestas del modelo:
 
 | Archivo | Qué verifica |
 |---|---|

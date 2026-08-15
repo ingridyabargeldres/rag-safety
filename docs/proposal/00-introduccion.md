@@ -3,18 +3,20 @@
 Este documento presenta la motivación del proyecto, su objetivo concreto, el
 alcance de lo implementado y la estructura del resto de la documentación.
 Primero se explica por qué los sistemas KG-RAG son vulnerables a la inserción de
-conocimiento falso (Motivación); luego se precisa qué reproduce esta
-implementación (Objetivo de la implementación); a continuación se delimita qué
-queda fuera de ese alcance (Alcance de esta reproducción); y finalmente se ofrece
-un mapa de los demás documentos (Estructura de esta documentación).
+conocimiento falso ([Motivación](#motivación)); luego se precisa qué reproduce
+esta implementación ([Objetivo de la implementación](#objetivo-de-la-implementación));
+a continuación se delimita qué queda fuera de ese alcance
+([Alcance de esta reproducción](#alcance-de-esta-reproducción)); y finalmente
+se ofrece un mapa de los demás documentos
+([Estructura de esta documentación](#estructura-de-esta-documentación)).
 
 ## Motivación
 
 Los sistemas de generación aumentada por recuperación (RAG) permiten que un modelo de
 lenguaje responda apoyándose en una fuente de conocimiento externa en lugar de
 depender únicamente de lo que memorizó durante el entrenamiento. Cuando esa fuente
-externa es un grafo de conocimiento (KG), el sistema puede seguir cadenas de
-razonamiento explícitas —entidad por entidad, relación por relación— en vez de
+externa es un grafo de conocimiento (KG), el sistema puede seguir caminos de
+razonamiento explícitos —entidad por entidad, relación por relación— en vez de
 recuperar simples fragmentos de texto. Esto se conoce como KG-RAG y resulta
 especialmente atractivo en dominios donde la trazabilidad de la respuesta importa
 (por ejemplo, diagnóstico médico o análisis legal), porque el camino de razonamiento
@@ -26,12 +28,12 @@ editable puede ser alterado por un tercero con acceso de escritura, insertando u
 pequeño número de hechos falsos pero plausibles. A diferencia de un documento de
 texto libre, una tripleta `(cabeza, relación, cola)` es una unidad de información
 muy compacta y estructurada: basta con insertar una sola arista falsa en el lugar
-correcto del grafo para desviar una cadena de razonamiento multi-salto completa
+correcto del grafo para desviar un camino de razonamiento multi-salto completo
 hacia una conclusión incorrecta, sin que el resto del grafo se vea alterado ni la
 manipulación resulte evidente a simple vista (Zhao et al., 2025).
 
 Este proyecto documenta una implementación propia del ataque de envenenamiento
-de conocimiento a KG-RAG propuesto por Zhao et al. (2025): dado un grafo de
+de conocimiento contra sistemas KG-RAG propuesto por Zhao et al. (2025): dado un grafo de
 conocimiento limpio y una pregunta, el ataque identifica primero
 qué respuestas incorrectas conviene inducir, luego determina qué patrón de
 relaciones seguiría un sistema KG-RAG al razonar sobre esa pregunta, y finalmente
@@ -44,9 +46,12 @@ conocimiento.
 
 ## Objetivo de la implementación
 
-Reproducir el pipeline de ataque de tres etapas —generación de respuestas
-adversarias, extracción de caminos de relaciones e inserción de tripletas de
-perturbación— de forma ejecutable contra cualquier grafo de conocimiento en
+Reproducir el pipeline de ataque de tres etapas —[generación de respuestas
+adversarias](02-metodo-de-ataque.md#etapa-1--generación-de-respuestas-adversarias),
+[extracción de caminos de relaciones](02-metodo-de-ataque.md#etapa-2--extracción-de-caminos-de-relaciones)
+e [inserción de tripletas de
+perturbación](02-metodo-de-ataque.md#etapa-3--inserción-de-tripletas-de-perturbación)—
+de forma ejecutable contra cualquier grafo de conocimiento en
 memoria, validando cada etapa con pruebas automatizadas y con una demostración de
 extremo a extremo sobre un caso concreto y verificable a mano.
 
@@ -57,7 +62,7 @@ integra ninguno de los cuatro sistemas KG-RAG objetivo (RoG, GCR, G-retriever,
 SubgraphRAG) ni los benchmarks WebQSP/CWQ. En su lugar, el ataque se valida
 insertando las tripletas de perturbación en un grafo de conocimiento propio y
 verificando —por inspección directa del grafo— que las nuevas aristas completan
-efectivamente una cadena de inferencia hacia la respuesta adversaria. El detalle de
+efectivamente un camino de razonamiento hacia la respuesta adversaria. El detalle de
 esta y otras desviaciones respecto al método original se documenta en
 [Desviaciones frente al método original y limitaciones](05-desviaciones-limitaciones.md).
 

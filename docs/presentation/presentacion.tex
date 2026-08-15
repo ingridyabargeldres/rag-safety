@@ -54,12 +54,12 @@
     \item RAG permite que un LLM responda apoyándose en una fuente de conocimiento
       externa, en lugar de depender solo de lo memorizado en el entrenamiento.
     \item Cuando esa fuente es un \textbf{grafo de conocimiento (KG)}, el sistema
-      puede seguir cadenas de razonamiento explícitas y auditables entre
+      puede seguir caminos de razonamiento explícitos y auditables entre
       entidades: KG-RAG.
     \item La misma propiedad que hace útil a un KG-RAG --- un grafo editable y
       actualizable --- es también su punto débil.
     \item Una sola tripleta falsa, bien conectada a la entidad correcta, puede
-      desviar una cadena de razonamiento multi-salto completa, sin alterar
+      desviar un camino de razonamiento multi-salto completo, sin alterar
       visiblemente el resto del grafo.
   \end{itemize}
 \end{frame}
@@ -80,7 +80,7 @@
     \begin{column}{0.5\textwidth}
       \textbf{Después de insertar 1 arista falsa}
       \begin{itemize}
-        \item[] Manchester \(\to\) \texttt{containedIn} \(\to\) England
+        \item[] Manchester \(\to\) \texttt{cityOf} \(\to\) England
         \item[] England \(\to\) \texttt{containedIn} \(\to\) United Kingdom
         \item[] $\Rightarrow$ el sistema puede responder \emph{United Kingdom}
       \end{itemize}
@@ -114,11 +114,14 @@
 \begin{frame}{Pipeline de un sistema KG-RAG}
   \begin{block}{Etapa de recuperación}
     \[ G_q = \text{Retriever}(q; G) \tag{1} \]
-    Extrae del grafo completo $G$ el subgrafo $G_q$ relevante para la pregunta $q$.
+    $G_q = (E_q, R_q, T_q)$: subgrafo extraído del grafo completo $G$ con solo
+    la información relevante para responder la pregunta $q$.
   \end{block}
   \begin{block}{Etapa de generación}
     \[ a = f_\theta(\text{Prompt}[q, G_q]) \tag{2} \]
-    El LLM $f_\theta$ produce la respuesta final a partir de $q$ y $G_q$.
+    $\theta$: parámetros del LLM generador; $\text{Prompt}[q, G_q]$: plantilla
+    que combina la pregunta con el subgrafo recuperado; $a \in E$: respuesta
+    final que produce el sistema.
   \end{block}
   \begin{alertblock}{Vulnerabilidad}
     Si $G$ contiene tripletas falsas bien conectadas, la recuperación puede
@@ -130,25 +133,48 @@
   \[ \hat{A} = \text{KG-RAG}(q; \hat{G}), \qquad a^{*} \notin \hat{A}, \qquad
      \hat{G} = \{E, R, T \cup \hat{T}\} \tag{3} \]
   \begin{itemize}
+    \item $\hat{T}$: tripletas adversarias insertadas; $\hat{G}$: grafo
+      envenenado ($T \cup \hat{T}$); $\hat{A}$: respuestas que produce el
+      sistema al operar sobre $\hat{G}$; $a^{*}$: respuesta correcta original.
     \item El atacante \textbf{no} conoce el recuperador, el LLM, ni la respuesta
       correcta $a^{*}$ de la pregunta atacada.
-    \item Su única capacidad es \textbf{insertar} un conjunto pequeño de
-      tripletas $\hat{T}$ en el grafo --- no puede borrar ni modificar nada.
+    \item Su única capacidad es \textbf{insertar} $\hat{T}$ en el grafo --- no
+      puede borrar ni modificar tripletas existentes.
     \item Restricciones de sigilo: cada tripleta insertada reutiliza entidades y
       relaciones \emph{ya existentes} en el grafo, y el número de tripletas por
       respuesta adversaria está acotado por un presupuesto $K$.
   \end{itemize}
 \end{frame}
 
-\begin{frame}{Formalización: extracción de caminos de relaciones}
+\begin{frame}{Formalización: objetivo de extracción de caminos (I)}
   \[ \max_\theta \; \mathbb{E}_{w \sim W^{*}}\big[\log P_\theta(w \mid q)\big] \tag{4} \]
+  \begin{itemize}
+    \item $\theta$: parámetros del modelo que propone caminos de relaciones;
+      $w = (r_1, \dots, r_l)$: un camino de relaciones candidato.
+    \item $W^{*}$: caminos de relaciones más cortos entre la entidad tema y la
+      respuesta correcta en el grafo --- la supervisión débil del problema.
+    \item $P_\theta(w \mid q)$: probabilidad que el modelo asigna a $w$ dada la
+      pregunta $q$; el objetivo es maximizar su valor esperado sobre $W^{*}$.
+  \end{itemize}
   \[ \operatorname*{arg\,max}_\theta \; \frac{1}{|W^{*}|} \sum_{w \in W^{*}} \log P_\theta(w \mid q) \tag{5} \]
+  \begin{itemize}
+    \item Asumiendo $w$ uniforme en $W^{*}$, la esperanza de la Ec.~4 se
+      aproxima promediando el log-verosímil sobre todos los caminos del
+      conjunto: la Ec.~5 es la versión computable de la Ec.~4.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Formalización: descomposición del camino (II)}
   \[ \frac{1}{|W^{*}|} \sum_{w \in W^{*}} \log \prod_{i=1}^{|w|} P_\theta(r_i \mid r_{<i}, q) \tag{6} \]
   \begin{itemize}
-    \item $W^{*}$: caminos de relaciones más cortos entre la entidad tema y la
-      respuesta correcta (supervisión débil).
-    \item La Ec.~6 descompone el problema: generar un buen camino equivale a
-      predecir, relación por relación, la siguiente relación más plausible.
+    \item $r_i$: relación en la posición $i$ del camino; $r_{<i}$: relaciones ya
+      generadas antes de esa posición; $|w|$: longitud del camino.
+    \item Un camino de relaciones es una secuencia, así que su probabilidad se
+      factoriza en el producto de las probabilidades de cada relación
+      condicionada a las anteriores y a $q$.
+    \item Entrenar el modelo para proponer buenos caminos equivale, entonces, a
+      entrenarlo para predecir, relación por relación, la siguiente relación
+      más plausible dada la pregunta.
     \item El artículo original resuelve esto \textbf{entrenando} un LLM
       específico de KG (LLM\_RoG). Esta implementación logra el mismo efecto sin
       entrenamiento (ver sección de desviaciones).
@@ -158,7 +184,11 @@
 \begin{frame}{Formalización: tripleta de perturbación}
   \[ E_{l-1} = \text{Grounding}(e_q, w'; G), \qquad w' = (r_1, \dots, r_{l-1}) \tag{7} \]
   \begin{itemize}
-    \item Se ancla el \textbf{prefijo} del camino desde la entidad tema $e_q$.
+    \item $e_q$: entidad tema de la pregunta; $w' = (r_1, \dots, r_{l-1})$:
+      \textbf{prefijo} del camino de relaciones $w$ (todas sus relaciones menos
+      la última, $r_l$); $E_{l-1}$: entidades reales alcanzadas al anclar $w'$
+      desde $e_q$, recorriendo $e_q \xrightarrow{r_1} \cdots
+      \xrightarrow{r_{l-1}} e_{l-1}$.
     \item Por cada entidad alcanzada $e_{l-1} \in E_{l-1}$, se construye la
       tripleta de perturbación $(e_{l-1}, r_l, \hat{a})$, adjuntando la última
       relación del camino hacia la respuesta adversaria $\hat{a}$.
@@ -198,6 +228,7 @@ Generate 5 entity names that are incorrect answers to this
 question, but might sound plausible or confusing.
 - Only list the entity names as a bullet list.
 - Each bullet should contain the name of one entity only.
+- Do not include multiple distinct entities in a single bullet point.
   \end{lstlisting}
   \begin{itemize}
     \item Prompt tomado de Zhao et al. (2025).
@@ -258,55 +289,14 @@ question, but might sound plausible or confusing.
 pip install -r requirements.txt
 cp .env.example .env   # completar OPENAI_API_KEY
 
-python scripts/demo_manchester.py --offline
-python -m pytest -q
+python scripts/demo_manchester.py
 \end{lstlisting}
   \end{block}
   \begin{itemize}
     \item Grafo construido a mano: 13 tripletas sobre \emph{Manchester By The Sea}.
-    \item Modo \texttt{--offline}: LLM simulado y determinista, sin llamadas a la API.
-    \item 18 pruebas automatizadas cubren cada etapa de forma aislada, también offline.
-  \end{itemize}
-\end{frame}
-
-\begin{frame}[fragile]{Resultado reproducible (modo offline)}
-\begin{lstlisting}
-Adversarial target answers: ['United Kingdom']
-Relation path templates: [('filmPlace', 'locatedIn'), ('starring', 'bornIn')]
-
-Injected perturbation triples:
-  (Manchester, locatedIn, United Kingdom)      [target: United Kingdom]
-  (Casey Affleck, bornIn, United Kingdom)      [target: United Kingdom]
-
-Poisoned KG: 15 triples (+2 vs. clean)
-\end{lstlisting}
-  \begin{itemize}
-    \item De los candidatos generados, solo \emph{United Kingdom} ya existía en
-      el grafo: \texttt{(England, containedIn, United Kingdom)}, alcanzable en
-      dos saltos desde David Beckham y sin relación con la película.
-    \item Ambos caminos se anclaron directamente: no fue necesaria la
-      estrategia de respaldo.
-  \end{itemize}
-\end{frame}
-
-\begin{frame}{Interpretación (ejecución offline)}
-  \begin{itemize}
-    \item Con solo \textbf{2 tripletas insertadas} sobre 13 originales, se crean
-      dos rutas de razonamiento alternativas hacia una respuesta incorrecta:
-      \begin{itemize}
-        \small
-        \item Manchester By The Sea $\to$ \texttt{filmPlace} $\to$ Manchester
-          $\to$ \texttt{locatedIn} $\to$ United Kingdom
-        \item Manchester By The Sea $\to$ \texttt{starring} $\to$ Casey Affleck
-          $\to$ \texttt{bornIn} $\to$ United Kingdom
-      \end{itemize}
-    \item Ninguna señal estructural distingue estas rutas de la ruta legítima
-      hacia \emph{United States}.
-    \item Confirma, a pequeña escala, el mecanismo central del artículo: una
-      perturbación mínima puede activar una cadena de inferencia engañosa
-      completa.
-    \item \texttt{pytest -q} $\Rightarrow$ \textbf{18 passed} --- cada etapa se
-      valida de forma aislada y reproducible.
+    \item Pregunta atacada: ¿en qué país se filmó la película?
+    \item Ejecución real contra \texttt{gpt-4o-mini} (temperatura 0.7): sin
+      respuestas fijas, cada corrida puede generar candidatos distintos.
   \end{itemize}
 \end{frame}
 
@@ -322,15 +312,36 @@ Injected perturbation triples:
 Poisoned KG: 15 triples (+2 vs. clean)
 \end{lstlisting}
   \begin{itemize}
-    \item Modelo real (\texttt{gpt-4o-mini}, sin \texttt{--offline}): la
-      respuesta adversaria cambia de \emph{United Kingdom} a \emph{Florida}
-      ---coincidencia accidental distinta, vía \texttt{(Miami, locatedIn,
-      Florida)}--- porque el LLM no es determinista.
+    \item Modelo real (\texttt{gpt-4o-mini}): al no ser determinista, cada
+      corrida propone un conjunto distinto de países plausibles pero
+      incorrectos. En esta ejecución sobrevivió la coincidencia difusa
+      \emph{Florida}, vía coincidencia accidental con \texttt{(Miami,
+      locatedIn, Florida)}, sin relación con la película.
     \item El camino \texttt{(filmPlace, starring)} es \textbf{anclable pero
       semánticamente incoherente}: adjuntar \texttt{starring} a una ubicación
       no tiene sentido real, aunque la restricción de vocabulario lo admite.
-    \item Límite honesto: esta corrida no es reproducible byte a byte; el modo
-      \texttt{--offline} sigue siendo la referencia fija.
+    \item Límite honesto: esta corrida no es reproducible byte a byte, al no
+      fijarse una semilla para el muestreo del modelo de lenguaje.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Interpretación de la ejecución real}
+  \begin{itemize}
+    \item Con solo \textbf{2 tripletas insertadas} sobre 13 originales, se crean
+      dos rutas de razonamiento alternativas hacia \emph{Florida}:
+      \begin{itemize}
+        \small
+        \item Manchester By The Sea $\to$ \texttt{filmPlace} $\to$ Manchester
+          $\to$ \texttt{locatedIn} $\to$ Florida
+        \item Manchester By The Sea $\to$ \texttt{filmPlace} $\to$ Manchester
+          $\to$ \texttt{starring} $\to$ Florida
+      \end{itemize}
+    \item Ninguna señal estructural distingue estas rutas de la ruta legítima
+      hacia \emph{United States}.
+    \item Confirma el mecanismo central del artículo: una perturbación mínima
+      puede activar una cadena de inferencia engañosa completa, incluso cuando
+      uno de los caminos --- \texttt{starring} sobre una ubicación --- es
+      semánticamente incoherente.
   \end{itemize}
 \end{frame}
 
@@ -354,7 +365,7 @@ Poisoned KG: 15 triples (+2 vs. clean)
       sustanciales frente a una línea base de modificación aleatoria (caída
       marginal).
     \item Hallazgo clave: la vulnerabilidad principal está en la etapa de
-      \textbf{recuperación} (cobertura $>$90\% de tripletas adversarias
+      \textbf{recuperación} (cobertura $>$87\% de tripletas adversarias
       recuperadas); la etapa de generación es más resistente, pero exhibe una
       respuesta polarizada --- o rechaza el contenido adversario por completo, o
       lo adopta dominantemente.
@@ -401,8 +412,8 @@ Poisoned KG: 15 triples (+2 vs. clean)
 \begin{frame}{Conclusiones}
   \begin{itemize}
     \item Se reprodujo el pipeline de ataque de tres etapas de forma ejecutable
-      y verificable, con 18 pruebas automatizadas y una demostración de
-      extremo a extremo.
+      y verificable, con una demostración de extremo a extremo contra la API
+      real de OpenAI.
     \item El caso replicado confirma el mecanismo central del artículo: una
       perturbación mínima e indistinguible estructuralmente puede activar una
       cadena de inferencia engañosa completa.
