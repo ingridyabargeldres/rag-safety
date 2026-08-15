@@ -289,14 +289,19 @@ question, but might sound plausible or confusing.
 pip install -r requirements.txt
 cp .env.example .env   # completar OPENAI_API_KEY
 
-python scripts/demo_manchester.py
+python scripts/demo_manchester.py --offline  # referencia reproducible
+python scripts/demo_manchester.py            # API real, no determinista
 \end{lstlisting}
   \end{block}
   \begin{itemize}
     \item Grafo construido a mano: 13 tripletas sobre \emph{Manchester By The Sea}.
     \item Pregunta atacada: ¿en qué país se filmó la película?
-    \item Ejecución real contra \texttt{gpt-4o-mini} (temperatura 0.7): sin
-      respuestas fijas, cada corrida puede generar candidatos distintos.
+    \item Modo \texttt{--offline} (\textbf{referencia reproducible}):
+      \texttt{StaticLLMClient} con respuestas fijas $\Rightarrow$ siempre inserta
+      2 tripletas hacia \emph{United Kingdom}.
+    \item Ejecución real contra \texttt{gpt-4o-mini} (temperatura 0.7, sin
+      \texttt{--offline}): sin respuestas fijas, cada corrida puede generar
+      candidatos distintos --- ver siguiente diapositiva.
   \end{itemize}
 \end{frame}
 
@@ -312,6 +317,9 @@ Injected perturbation triples:
 Poisoned KG: 15 triples (+2 vs. clean)
 \end{lstlisting}
   \begin{itemize}
+    \item El script fija \texttt{--n-answers=1} (no el default $N{=}5$ de
+      \texttt{run\_attack}), por eso cada corrida muestra una sola respuesta
+      adversaria en vez de una lista de cinco candidatos.
     \item Modelo real (\texttt{gpt-4o-mini}): al no ser determinista, cada
       corrida propone un conjunto distinto de países plausibles pero
       incorrectos. En esta ejecución sobrevivió la coincidencia difusa
