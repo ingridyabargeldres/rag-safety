@@ -131,6 +131,7 @@
 \end{frame}
 
 \begin{frame}{Pipeline de un sistema KG-RAG}
+  \small
   \begin{block}{Etapa de recuperación}
     \[ G_q = \text{Retriever}(q; G) \tag{1} \]
     $G_q = (E_q, R_q, T_q)$: subgrafo extraído del grafo completo $G$ con solo
@@ -165,38 +166,27 @@
   \end{itemize}
 \end{frame}
 
-\begin{frame}{Formalización: objetivo de extracción de caminos (I)}
+\begin{frame}{Formalización: objetivo de extracción de caminos (I--II)}
+  \footnotesize
+  \setlength{\abovedisplayskip}{3pt}
+  \setlength{\belowdisplayskip}{3pt}
   \[ \max_\theta \; \mathbb{E}_{w \sim W^{*}}\big[\log P_\theta(w \mid q)\big] \tag{4} \]
   \begin{itemize}
-    \item $\theta$: parámetros del modelo que propone caminos de relaciones;
-      $w = (r_1, \dots, r_l)$: un camino de relaciones candidato.
-    \item $W^{*}$: caminos de relaciones más cortos entre la entidad tema y la
-      respuesta correcta en el grafo --- la supervisión débil del problema.
-    \item $P_\theta(w \mid q)$: probabilidad que el modelo asigna a $w$ dada la
-      pregunta $q$; el objetivo es maximizar su valor esperado sobre $W^{*}$.
+    \item $\theta$: parámetros del modelo que propone caminos de relaciones
+      $w = (r_1, \dots, r_l)$; $W^{*}$: caminos más cortos entre la entidad
+      tema y la respuesta correcta --- la supervisión débil del problema.
+    \item Asumiendo $w$ uniforme en $W^{*}$, la Ec.~4 se aproxima promediando
+      el log-verosímil sobre $W^{*}$ (Ec.~5, versión computable de la Ec.~4):
   \end{itemize}
   \[ \operatorname*{arg\,max}_\theta \; \frac{1}{|W^{*}|} \sum_{w \in W^{*}} \log P_\theta(w \mid q) \tag{5} \]
-  \begin{itemize}
-    \item Asumiendo $w$ uniforme en $W^{*}$, la esperanza de la Ec.~4 se
-      aproxima promediando el log-verosímil sobre todos los caminos del
-      conjunto: la Ec.~5 es la versión computable de la Ec.~4.
-  \end{itemize}
-\end{frame}
-
-\begin{frame}{Formalización: descomposición del camino (II)}
   \[ \frac{1}{|W^{*}|} \sum_{w \in W^{*}} \log \prod_{i=1}^{|w|} P_\theta(r_i \mid r_{<i}, q) \tag{6} \]
   \begin{itemize}
-    \item $r_i$: relación en la posición $i$ del camino; $r_{<i}$: relaciones ya
-      generadas antes de esa posición; $|w|$: longitud del camino.
-    \item Un camino de relaciones es una secuencia, así que su probabilidad se
-      factoriza en el producto de las probabilidades de cada relación
-      condicionada a las anteriores y a $q$.
-    \item Entrenar el modelo para proponer buenos caminos equivale, entonces, a
-      entrenarlo para predecir, relación por relación, la siguiente relación
-      más plausible dada la pregunta.
-    \item El artículo original resuelve esto \textbf{entrenando} un LLM
-      específico de KG (LLM\_RoG). Esta implementación logra el mismo efecto sin
-      entrenamiento (ver sección de desviaciones).
+    \item Un camino es una secuencia, así que su probabilidad se factoriza
+      (Ec.~6): entrenar el modelo equivale a predecir, relación por relación,
+      la siguiente más plausible dada la pregunta.
+    \item El artículo resuelve esto \textbf{entrenando} un LLM específico de KG
+      (LLM\_RoG). Esta implementación logra el mismo efecto sin entrenamiento
+      (ver sección de desviaciones).
   \end{itemize}
 \end{frame}
 
@@ -335,40 +325,21 @@ Injected perturbation triples:
 
 Poisoned KG: 15 triples (+2 vs. clean)
 \end{lstlisting}
+  \small
   \begin{itemize}
-    \item El script fija \texttt{--n-answers=1} (no el default $N{=}5$ de
-      \texttt{run\_attack}), por eso cada corrida muestra una sola respuesta
-      adversaria en vez de una lista de cinco candidatos.
-    \item Modelo real (\texttt{gpt-4o-mini}): al no ser determinista, cada
-      corrida propone un conjunto distinto de países plausibles pero
-      incorrectos. En esta ejecución sobrevivió la coincidencia difusa
-      \emph{Florida}, vía coincidencia accidental con \texttt{(Miami,
-      locatedIn, Florida)}, sin relación con la película.
-    \item El camino \texttt{(filmPlace, starring)} es \textbf{anclable pero
+    \item Modelo real (\texttt{gpt-4o-mini}, no determinista): sobrevivió la
+      coincidencia difusa \emph{Florida}, vía coincidencia accidental con
+      \texttt{(Miami, locatedIn, Florida)}, sin relación con la película.
+    \item \texttt{(filmPlace, starring)} es \textbf{anclable pero
       semánticamente incoherente}: adjuntar \texttt{starring} a una ubicación
       no tiene sentido real, aunque la restricción de vocabulario lo admite.
-    \item Límite honesto: esta corrida no es reproducible byte a byte, al no
-      fijarse una semilla para el muestreo del modelo de lenguaje.
-  \end{itemize}
-\end{frame}
-
-\begin{frame}{Interpretación de la ejecución real}
-  \begin{itemize}
-    \item Con solo \textbf{2 tripletas insertadas} sobre 13 originales, se crean
-      dos rutas de razonamiento alternativas hacia \emph{Florida}:
-      \begin{itemize}
-        \small
-        \item Manchester By The Sea $\to$ \texttt{filmPlace} $\to$ Manchester
-          $\to$ \texttt{locatedIn} $\to$ Florida
-        \item Manchester By The Sea $\to$ \texttt{filmPlace} $\to$ Manchester
-          $\to$ \texttt{starring} $\to$ Florida
-      \end{itemize}
-    \item Ninguna señal estructural distingue estas rutas de la ruta legítima
-      hacia \emph{United States}.
-    \item Confirma el mecanismo central del artículo: una perturbación mínima
-      puede activar una cadena de inferencia engañosa completa, incluso cuando
-      uno de los caminos --- \texttt{starring} sobre una ubicación --- es
-      semánticamente incoherente.
+    \item Con solo \textbf{2 tripletas insertadas} sobre 13 originales, se
+      crean dos rutas hacia \emph{Florida} sin ninguna señal estructural que
+      las distinga de la ruta legítima hacia \emph{United States} --- confirma
+      el mecanismo central del artículo, aun con un camino semánticamente
+      incoherente.
+    \item Límite honesto: sin semilla fija, esta corrida no es reproducible
+      byte a byte.
   \end{itemize}
 \end{frame}
 
@@ -403,33 +374,60 @@ Poisoned KG: 15 triples (+2 vs. clean)
 \section{Desviaciones y limitaciones}
 % ============================================================
 
-\begin{frame}{Desviaciones frente al método original}
+\begin{frame}{Desviaciones y limitaciones de alcance}
+  \small
   \begin{block}{Extracción de caminos sin modelo entrenado}
     El artículo entrena LLM\_RoG (LLaMA-2-7B) con el objetivo de las Ec.~4--6.
     Esta implementación logra caminos anclables restringiendo el vocabulario de
     relaciones de un LLM de propósito general al vecindario real de la entidad
-    tema --- sin GPU ni entrenamiento.
+    tema --- sin GPU ni entrenamiento. El resto (respuestas adversarias por
+    coincidencia difusa, inserción con estrategia de respaldo) sigue el
+    artículo directamente.
   \end{block}
-  \begin{block}{El resto sigue el artículo directamente}
-    Generación de respuestas adversarias por coincidencia difusa e inserción de
-    perturbación con estrategia de respaldo se implementan tal como se describen
-    en el artículo.
-  \end{block}
-\end{frame}
-
-\begin{frame}{Limitaciones de alcance}
   \begin{itemize}
     \item No se integra ningún sistema KG-RAG objetivo (RoG, GCR, G-retriever,
       SubgraphRAG): la validación se detiene en el grafo envenenado, sin medir
       métricas de respuesta final (Hit, F1, A-MRR, \dots).
     \item Sin benchmarks a gran escala: un grafo de 13 tripletas construido a
       mano, frente a los miles de preguntas y subgrafos de WebQSP/CWQ.
-    \item Modelo de lenguaje distinto: \texttt{gpt-4o-mini} en lugar de GPT-4.
+    \item Modelo de lenguaje distinto: \texttt{gpt-4o-mini} en lugar de GPT-4
+      (detalle en la siguiente diapositiva).
   \end{itemize}
-  \vspace{1em}
-  \textbf{Trabajo futuro:} integrar un recuperador y generador mínimos para medir
-  el efecto sobre la respuesta final; ejecutar sobre un subconjunto real de
-  WebQSP/CWQ.
+  \vspace{0.5em}
+  \textbf{Trabajo futuro:} integrar un recuperador y generador mínimos para
+  medir el efecto sobre la respuesta final; ejecutar sobre un subconjunto real
+  de WebQSP/CWQ.
+\end{frame}
+
+\begin{frame}{Modelos de lenguaje evaluados en el artículo}
+  \footnotesize
+  \centering
+  \begin{tabular}{llccc}
+    \toprule
+    \textbf{Categoría} & \textbf{LLM} & \textbf{F1 limpio} & \textbf{F1 atacado} & \textbf{Degradación} \\
+    \midrule
+    Open-source     & Llama-2-7B-chat-hf    & 41.00 & 22.78 & $\downarrow$ 44\% \\
+    Open-source     & Llama-3.1-8B-Instruct & 54.20 & 32.02 & $\downarrow$ 41\% \\
+    Closed-source   & GPT-3.5-turbo         & 56.51 & 36.19 & $\downarrow$ 36\% \\
+    Closed-source   & GPT-4                 & 61.33 & 37.31 & $\downarrow$ 39\% \\
+    MoE             & DeepSeek-V3-0324      & 57.69 & 33.00 & $\downarrow$ 43\% \\
+    KG-specific     & LLM\_RoG (LLaMA-2-7B) & 70.34 & 38.06 & $\downarrow$ 46\% \\
+    \bottomrule
+  \end{tabular}
+  \vspace{0.5em}
+  \begin{itemize}
+    \small
+    \item Tabla 5 del artículo: robustez de RoG en WebQSP variando \textbf{solo}
+      el LLM de generación, con recuperación y prompts fijos.
+    \item Para las respuestas adversarias del ataque, el artículo usa
+      \textbf{GPT-4}; para GCR/SubgraphRAG usa \textbf{GPT-3.5-turbo} como
+      backend --- ninguno de estos seis modelos coincide con el usado aquí.
+  \end{itemize}
+  \vspace{0.3em}
+  \begin{alertblock}{Esta implementación}
+    \small Usa únicamente \texttt{gpt-4o-mini} en las dos etapas basadas en
+    LLM (respuestas adversarias y caminos de relaciones).
+  \end{alertblock}
 \end{frame}
 
 % ============================================================
@@ -473,9 +471,10 @@ Poisoned KG: 15 triples (+2 vs. clean)
 % ============================================================
 
 \begin{frame}[fragile]{Apéndice --- Mapa de módulos: \texttt{src/kgrag\_attack/}}
-  \footnotesize
+  \scriptsize
   \centering
-  \begin{tabular}{@{}l p{7.4cm}@{}}
+  \renewcommand{\arraystretch}{0.85}
+  \begin{tabular}{@{}l p{7.6cm}@{}}
     \toprule
     \textbf{Archivo} & \textbf{Qué hace} \\
     \midrule
@@ -513,7 +512,7 @@ Poisoned KG: 15 triples (+2 vs. clean)
 \end{frame}
 
 \begin{frame}[fragile]{Apéndice --- Secuencia de ejecución de \texttt{demo\_manchester.py}}
-  \footnotesize
+  \scriptsize
   \begin{enumerate}
     \item \texttt{demo\_manchester.py} agrega \texttt{src/} al
       \texttt{sys.path} e importa \texttt{run\_attack},
