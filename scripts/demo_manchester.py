@@ -42,6 +42,10 @@ CLEAN_TRIPLES = [
     ("England", "containedIn", "United Kingdom"),
     ("Miami", "locatedIn", "Florida"),
     ("Florida", "stateOf", "United States"),
+    ("Ryan Gosling", "bornIn", "Canada"),
+    ("Marion Cotillard", "bornIn", "France"),
+    ("Diane Kruger", "bornIn", "Germany"),
+    ("Nicole Kidman", "bornIn", "Australia"),
 ]
 
 # Canned replies for --offline mode: an adversarial-answer bullet list

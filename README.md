@@ -60,6 +60,7 @@ ataque completo de extremo a extremo:
 ```bash
 python scripts/demo_manchester.py            # usa OPENAI_API_KEY
 python scripts/demo_manchester.py --offline  # sin llamadas a la API, LLM simulado y determinista
+python scripts/demo_manchester.py --n-answers 3 --budget-k 4
 ```
 
 ### Uso programático
